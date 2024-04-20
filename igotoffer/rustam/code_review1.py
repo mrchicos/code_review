@@ -1,14 +1,26 @@
+import hashlib
+import os
 import pickle
 from getpass import getpass
+import statistics
+from collections import defaultdict
 
 class User:
     def __init__(self, username, password):
         self.username = username
-        self.password = password
+        self.password = self._encrypt_password(password)
         self.account = BankAccount()
 
+    def _encrypt_password(self, password):
+        salt = os.urandom(32)
+        key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+        return salt + key
+    
     def check_password(self, password):
-        return password == self.password
+        salt = self.password[:32]
+        key = self.password[32:]
+        attempt_key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+        return key == attempt_key
 
 class BankAccount:
     def __init__(self):
@@ -80,6 +92,7 @@ class BankSystem:
                 else:
                     print("Invalid username or password.")
             elif choice == '3':
+                self.save_users()
                 break
             else:
                 print("Invalid choice. Please try again.")
@@ -111,6 +124,50 @@ class BankSystem:
             else:
                 print("Invalid choice. Please try again.")
 
+def load_users(filename):
+    with open(filename, 'rb') as file:
+        return pickle.load(file)
+    
+def calculate_insights(users):
+    balances = [user.account.get_balance() for user in users.values()]
+    max_balance = max(balances) if balances else 0
+    min_balance = min(balances) if balances else 0
+    avg_balance = statistics.mean(balances) if balances else 0
+
+    return {
+        'max_balance': max_balance,
+        'min_balance': min_balance,
+        'avg_balance': avg_balance,
+        'total_balance': sum(balances),
+        'balance_distribution': calculate_balance_distribution(balances)
+    }
+
+def calculate_balance_distribution(balances):
+    distribution = defaultdict(int)
+    for balance in balances:
+        if balance < 1000:
+            distribution['<1000'] += 1
+        elif balance < 5000:
+            distribution['1000-4999'] += 1
+        else:
+            distribution['5000+'] += 1
+    return distribution
+
+def display_insights(insights):
+    print("Banking Insights Report")
+    print("-----------------------")
+    print(f"Max Balance: ${insights['max_balance']:.2f}")
+    print(f"Min Balance: ${insights['min_balance']:.2f}")
+    print(f"Avg Balance: ${insights['avg_balance']:.2f}")
+    print(f"Total Bank Balance: ${insights['total_balance']:.2f}")
+    print("Balance Distribution:")
+    for range, count in insights['balance_distribution'].items():
+        print(f"  {range}: {count} users")
+
 if __name__ == "__main__":
+    if os.path.exists('users.dat'):
+        users = load_users('users.dat')
+        insights = calculate_insights(users)
+        display_insights(insights)
     system = BankSystem()
     system.run()
